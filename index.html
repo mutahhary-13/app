@@ -113,7 +113,11 @@ footer{margin-top:35px}
  .play-overlay{width:56px;height:40px}
 }
 
-.player-actions{display:flex;align-items:center;gap:12px}.fullscreen-btn{padding:9px 12px;border:0;border-radius:7px;color:#fff;background:#294ce5;font-size:12px;font-weight:700}.player-wrap.is-fullscreen{padding:0;background:#000}.player-wrap.is-fullscreen .player{width:100%;height:100%;max-width:none;padding:0;border-radius:0;display:flex;flex-direction:column;background:#000}.player-wrap.is-fullscreen .player-head{padding:10px 14px;color:#fff;background:#10182b}.player-wrap.is-fullscreen .player-head h2{color:#fff}.player-wrap.is-fullscreen .close{color:#fff}.player-wrap.is-fullscreen .video{flex:1;width:100%;height:100%;max-height:none;aspect-ratio:auto;border-radius:0}@media(max-width:620px){.player-actions{gap:8px}.fullscreen-btn{padding:8px 10px}}
+.player-actions{display:flex;align-items:center;gap:12px}.fullscreen-btn{padding:9px 12px;border:0;border-radius:7px;color:#fff;background:#294ce5;font-size:12px;font-weight:700}.player-wrap.is-fullscreen{padding:0;background:#000}.player-wrap.is-fullscreen .player{width:100%;height:100%;max-width:none;padding:0;border-radius:0;display:flex;flex-direction:column;background:#000}.player-wrap.is-fullscreen .player-head{flex:0 0 auto;min-height:58px;padding:12px 18px;color:#fff;background:#10182b}.player-wrap.is-fullscreen .player-head h2{color:#fff;font-size:16px;line-height:1.35;white-space:normal;overflow-wrap:anywhere}.player-wrap.is-fullscreen .player-actions{flex-shrink:0}.player-wrap.is-fullscreen .fullscreen-btn{display:none!important}.player-wrap.is-fullscreen .close{color:#fff;font-size:28px}.player-wrap.is-fullscreen .video{flex:1 1 auto;min-height:0;width:100%;height:100%;max-height:none;aspect-ratio:auto;border-radius:0}@media(max-width:620px){.player-actions{gap:8px}.fullscreen-btn{padding:8px 10px}}
+/* Hide video title bar and cross button */
+.player-head {
+    display: none !important;
+}
 </style>
 </head>
 <body>
@@ -170,7 +174,7 @@ footer{margin-top:35px}
 <div class="player-wrap hidden" id="playerWrap" role="dialog" aria-modal="true" aria-labelledby="playerTitle">
   <div class="player">
     <div class="player-head"><h2 id="playerTitle">CTET lesson</h2><div class="player-actions"><button class="fullscreen-btn" id="fullscreenPlayer" type="button">⛶ Fullscreen</button><button class="close" id="closePlayer" aria-label="Stop video and close player">×</button></div></div>
-    <iframe class="video" id="video" title="CTET lesson video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+    <iframe class="video" id="video" title="CTET lesson video" sandbox="allow-scripts allow-same-origin allow-presentation" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
   </div>
 </div>
 
@@ -233,6 +237,11 @@ footer{margin-top:35px}
     const duration=item.contentDetails?.duration||'';
     return /\b(shorts?|#shorts)\b/.test(title) || (duration && /^PT(?:[0-5]?[0-9])S$/.test(duration));
   }
+  function durationToSeconds(iso){
+    const match=String(iso).match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+    if(!match)return 0;
+    return (Number(match[1]||0)*3600)+(Number(match[2]||0)*60)+Number(match[3]||0);
+  }
   async function searchCTET(query){
     if(!apiKey) throw new Error('Please open “YouTube API key settings” and add your YouTube Data API key.');
     const params=new URLSearchParams({
@@ -251,7 +260,7 @@ footer{margin-top:35px}
     const ctetTerms=/ctet|child development|pedagogy|teaching aptitude|language pedagogy|environmental studies|evs|mathematics pedagogy|social studies|classroom/i;
     return (detailData.items||[])
       .filter(item=>!isShort(item) && ctetTerms.test(`${item.snippet?.title||''} ${item.snippet?.description||''}`))
-      .map(item=>({id:item.id,snippet:item.snippet}));
+      .map(item=>({id:item.id,snippet:item.snippet,durationSeconds:durationToSeconds(item.contentDetails?.duration||'')}));
   }
   function renderResults(items){
     if(!items.length){
@@ -265,89 +274,4 @@ footer{margin-top:35px}
       const thumb=(thumbs.maxres || thumbs.standard || thumbs.high || thumbs.medium || thumbs.default || {}).url || '';
       const description=escapeHTML((item.snippet.description || '').replace(/\\s+/g,' ').slice(0,150));
       return `<article class="result" data-video="${item.id}" data-title="${title}" role="button" tabindex="0" aria-label="Play ${title}">
-        <div class="thumb-wrap"><img src="${thumb}" alt="Video thumbnail: ${title}" loading="lazy"><span class="play-overlay" aria-hidden="true">▶</span></div>
-        <div class="video-info"><h3 class="video-title">${title}</h3><p class="channel-name">${channel}</p>${description ? `<p class="video-description">${description}</p>` : ''}</div>
-      </article>`;
-    }).join('');
-  }
-  $('#searchForm').addEventListener('submit',async event=>{
-    event.preventDefault();
-    const query=$('#query').value.trim();
-    if(!query)return;
-    const button=$('#searchButton'); button.disabled=true; button.textContent='Searching…';
-    $('#results').innerHTML='';
-    setStatus($('#searchStatus'),'Finding CTET learning videos…');
-    try{
-      const items=await searchCTET(query);
-      renderResults(items);
-      setStatus($('#searchStatus'),`${items.length} suitable lesson${items.length===1?'':'s'} found.`);
-    }catch(error){setStatus($('#searchStatus'),error.message,true);}
-    finally{button.disabled=false;button.textContent='Search YouTube';}
-  });
-
-  function sendOrientation(mode){
-    // Thunkable's JavaScript Web Bridge receives this message in the app.
-    if(window.ThunkableWebviewerExtension && typeof window.ThunkableWebviewerExtension.postMessage==='function'){
-      window.ThunkableWebviewerExtension.postMessage(JSON.stringify({type:'orientation', value:mode}));
-    }
-  }
-  async function enterVideoFullscreen(){
-    const wrap=$('#playerWrap');
-    try{
-      if(wrap.requestFullscreen) await wrap.requestFullscreen();
-      else if($('#video').webkitEnterFullscreen) $('#video').webkitEnterFullscreen();
-    }catch(error){ console.warn('Fullscreen request was not available:',error); }
-    try{ if(screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); }catch(error){ /* Native Thunkable orientation bridge is the fallback. */ }
-    wrap.classList.add('is-fullscreen');
-    sendOrientation('landscape');
-    $('#fullscreenPlayer').textContent='⤢ Exit fullscreen';
-  }
-  async function exitVideoFullscreen(){
-    const wrap=$('#playerWrap');
-    if(document.fullscreenElement && document.exitFullscreen){
-      try{ await document.exitFullscreen(); }catch(error){ console.warn('Could not exit browser fullscreen:',error); }
-    }
-    try{ if(screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); }catch(error){}
-    wrap.classList.remove('is-fullscreen');
-    $('#fullscreenPlayer').textContent='⛶ Fullscreen';
-    sendOrientation('portrait');
-  }
-  function playResult(card){
-    if(!card)return;
-    $('#playerTitle').textContent=card.dataset.title;
-    $('#video').src=`https://www.youtube-nocookie.com/embed/${encodeURIComponent(card.dataset.video)}?autoplay=1&rel=0&playsinline=1`;
-    $('#playerWrap').classList.remove('hidden');
-  }
-  $('#results').addEventListener('click',event=>{
-    playResult(event.target.closest('.result[data-video]'));
-  });
-  $('#results').addEventListener('keydown',event=>{
-    if((event.key==='Enter' || event.key===' ') && event.target.matches('.result[data-video]')){
-      event.preventDefault();
-      playResult(event.target);
-    }
-  });
-  async function closePlayer(){
-    await exitVideoFullscreen();
-    $('#playerWrap').classList.add('hidden');
-    $('#video').src=''; // Stops playback immediately when the player is closed.
-  }
-  $('#fullscreenPlayer').addEventListener('click',()=>{
-    if(document.fullscreenElement || $('#playerWrap').classList.contains('is-fullscreen')) exitVideoFullscreen();
-    else enterVideoFullscreen();
-  });
-  document.addEventListener('fullscreenchange',()=>{
-    if(!document.fullscreenElement && $('#playerWrap').classList.contains('is-fullscreen')){
-      $('#playerWrap').classList.remove('is-fullscreen');
-      $('#fullscreenPlayer').textContent='⛶ Fullscreen';
-      try{ if(screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); }catch(error){}
-      sendOrientation('portrait');
-    }
-  });
-  $('#closePlayer').addEventListener('click',closePlayer);
-  $('#playerWrap').addEventListener('click',event=>{if(event.target===$('#playerWrap'))closePlayer();});
-  document.addEventListener('keydown',event=>{if(event.key==='Escape' && !$('#playerWrap').classList.contains('hidden'))closePlayer();});
-})();
-</script>
-</body>
-</html>
+        <div class="thumb-wrap"><img src="${thumb}" alt="Video thumbnail: ${title}" loading="lazy"><span class="play-overlay" aria-
